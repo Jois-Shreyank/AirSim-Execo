@@ -109,7 +109,8 @@ void AirsimROSWrapper::initialize_ros()
 
     nh_->declare_parameter("vehicle_name", rclcpp::ParameterValue(""));
     create_ros_pubs_from_settings_json();
-    airsim_control_update_timer_ = nh_->create_wall_timer(std::chrono::duration<double>(update_airsim_control_every_n_sec), std::bind(&AirsimROSWrapper::drone_state_timer_cb, this));
+    airsim_control_callback_group_ = nh_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    airsim_control_update_timer_ = nh_->create_wall_timer(std::chrono::duration<double>(update_airsim_control_every_n_sec), std::bind(&AirsimROSWrapper::drone_state_timer_cb, this), airsim_control_callback_group_);
 }
 
 void AirsimROSWrapper::create_ros_pubs_from_settings_json()
@@ -310,7 +311,9 @@ void AirsimROSWrapper::create_ros_pubs_from_settings_json()
         double update_airsim_img_response_every_n_sec;
         nh_->get_parameter("update_airsim_img_response_every_n_sec", update_airsim_img_response_every_n_sec);
 
-        airsim_img_response_timer_ = nh_img_->create_wall_timer(std::chrono::duration<double>(update_airsim_img_response_every_n_sec), std::bind(&AirsimROSWrapper::img_response_timer_cb, this));
+        auto cb = nh_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+        airsim_img_callback_groups_.push_back(cb);
+        airsim_img_response_timer_ = nh_img_->create_wall_timer(std::chrono::duration<double>(update_airsim_img_response_every_n_sec), std::bind(&AirsimROSWrapper::img_response_timer_cb, this), cb);
         is_used_img_timer_cb_queue_ = true;
     }
 
@@ -318,7 +321,9 @@ void AirsimROSWrapper::create_ros_pubs_from_settings_json()
     if (lidar_cnt > 0) {
         double update_lidar_every_n_sec;
         nh_->get_parameter("update_lidar_every_n_sec", update_lidar_every_n_sec);
-        airsim_lidar_update_timer_ = nh_lidar_->create_wall_timer(std::chrono::duration<double>(update_lidar_every_n_sec), std::bind(&AirsimROSWrapper::lidar_timer_cb, this));
+        auto cb = nh_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+        airsim_lidar_callback_groups_.push_back(cb);
+        airsim_lidar_update_timer_ = nh_lidar_->create_wall_timer(std::chrono::duration<double>(update_lidar_every_n_sec), std::bind(&AirsimROSWrapper::lidar_timer_cb, this), cb);
         is_used_lidar_timer_cb_queue_ = true;
     }
 
@@ -682,7 +687,7 @@ sensor_msgs::msg::PointCloud2 AirsimROSWrapper::get_lidar_msg_from_airsim(const 
         if (isENU_) {
             try {
                 sensor_msgs::msg::PointCloud2 lidar_msg_enu;
-                auto transformStampedENU = tf_buffer_->lookupTransform(AIRSIM_FRAME_ID, vehicle_name, rclcpp::Time(0), rclcpp::Duration::from_nanoseconds(1));
+                auto transformStampedENU = tf_buffer_->lookupTransform(AIRSIM_FRAME_ID, vehicle_name, rclcpp::Time(0), rclcpp::Duration(0,1));
                 tf2::doTransform(lidar_msg, lidar_msg_enu, transformStampedENU);
 
                 lidar_msg_enu.header.stamp = lidar_msg.header.stamp;
